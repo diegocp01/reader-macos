@@ -1,0 +1,23 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check shell scripts
+        run: zsh -n install.command uninstall.command scripts/*.sh
+      - name: Check Python
+        run: python3 -m py_compile python/engine.py tests/engine_smoke.py
+      - name: Build app
+        run: ./scripts/build.sh
+      - name: Verify signature and metadata
+        run: |
+          codesign --verify --deep --strict --verbose=2 ".build/app/Kokoro Reader.app"
+          plutil -lint ".build/app/Kokoro Reader.app/Contents/Info.plist"
+      - name: Confirm weights are excluded
+        run: test ! -e models

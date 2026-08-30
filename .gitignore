@@ -1,0 +1,9 @@
+.build/
+.python/
+.tools/
+.venv/
+models/
+.test-install/
+.uv-cache/
+.DS_Store
+*.wav
