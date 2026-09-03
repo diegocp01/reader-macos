@@ -17,6 +17,8 @@ Intel Macs are not currently supported because the MLX engine requires Apple Sil
 2. Double-click `install.command`. If macOS blocks it, Control-click it and choose **Open**.
 3. On first launch, allow **Kokoro Reader** in **System Settings → Privacy & Security → Accessibility**.
 
+The app enables **Launch at Login** automatically so the menu-bar icon returns after a logout or restart. macOS may show a background-item notification; if approval is required, enable **Kokoro Reader** in **System Settings → General → Login Items**. Right-click the menu-bar icon to turn Launch at Login off later.
+
 The installer creates:
 
 - `~/Applications/Kokoro Reader.app`
@@ -61,7 +63,7 @@ KOKORO_READER_HOME="$PWD/.test-install" .test-install/.venv/bin/python3 tests/en
 
 ## Uninstall
 
-Double-click `uninstall.command`. It moves the app and support files to the Trash so they remain recoverable.
+Turn off **Launch at Login** from the app's right-click menu, then double-click `uninstall.command`. It moves the app and support files to the Trash so they remain recoverable.
 
 ## License
 

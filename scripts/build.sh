@@ -15,6 +15,7 @@ xcrun clang \
   -framework Cocoa \
   -framework ApplicationServices \
   -framework AVFoundation \
+  -framework ServiceManagement \
   "$ROOT/Sources/KokoroReader/main.m" \
   -o "$CONTENTS/MacOS/KokoroReader"
 cp "$ROOT/python/engine.py" "$CONTENTS/Resources/engine.py"

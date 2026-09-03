@@ -1,6 +1,9 @@
 #import <Cocoa/Cocoa.h>
 #import <ApplicationServices/ApplicationServices.h>
 #import <AVFoundation/AVFoundation.h>
+#import <ServiceManagement/ServiceManagement.h>
+
+static NSString * const LaunchAtLoginPreferenceKey = @"launchAtLoginPreference";
 
 typedef NS_ENUM(NSInteger, ReaderState) {
     ReaderStateStarting,
@@ -198,10 +201,14 @@ typedef NS_ENUM(NSInteger, ReaderState) {
 @property(nonatomic) BOOL streamEnded;
 @property(nonatomic) BOOL cancelled;
 @property(nonatomic) ReaderState state;
+@property(nonatomic, copy) NSString *launchAtLoginError;
 @end
 
 @implementation AppDelegate
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
+    [NSUserDefaults.standardUserDefaults registerDefaults:@{LaunchAtLoginPreferenceKey: @YES}];
+    [self ensureLaunchAtLoginIfPreferred];
+
     self.state = ReaderStateStarting;
     self.selectionReader = SelectionReader.new;
     self.engine = KokoroEngine.new;
@@ -353,10 +360,72 @@ typedef NS_ENUM(NSInteger, ReaderState) {
     read.enabled = self.state == ReaderStateReady || active;
     [menu addItem:read];
     [menu addItem:NSMenuItem.separatorItem];
+    NSMenuItem *launchAtLogin = [[NSMenuItem alloc] initWithTitle:@"Launch at Login" action:@selector(toggleLaunchAtLogin) keyEquivalent:@""];
+    launchAtLogin.target = self;
+    launchAtLogin.state = [self launchAtLoginEnabled] ? NSControlStateValueOn : NSControlStateValueOff;
+    [menu addItem:launchAtLogin];
+    if (self.launchAtLoginError.length) {
+        NSMenuItem *loginError = [[NSMenuItem alloc] initWithTitle:[NSString stringWithFormat:@"Login item: %@", self.launchAtLoginError] action:nil keyEquivalent:@""];
+        loginError.enabled = NO;
+        [menu addItem:loginError];
+    }
+    [menu addItem:NSMenuItem.separatorItem];
     NSMenuItem *quit = [[NSMenuItem alloc] initWithTitle:@"Quit Kokoro Reader" action:@selector(quit) keyEquivalent:@""];
     quit.target = self;
     [menu addItem:quit];
     [self.statusItem popUpStatusItemMenu:menu];
+}
+
+- (BOOL)launchAtLoginEnabled {
+    if (@available(macOS 13.0, *)) {
+        return SMAppService.mainAppService.status == SMAppServiceStatusEnabled;
+    }
+    return NO;
+}
+
+- (NSString *)launchAtLoginStatusText {
+    if (@available(macOS 13.0, *)) {
+        switch (SMAppService.mainAppService.status) {
+            case SMAppServiceStatusEnabled: return @"enabled";
+            case SMAppServiceStatusRequiresApproval: return @"requires_approval";
+            case SMAppServiceStatusNotFound: return @"not_found";
+            case SMAppServiceStatusNotRegistered:
+            default: return @"not_registered";
+        }
+    }
+    return @"unsupported";
+}
+
+- (void)ensureLaunchAtLoginIfPreferred {
+    if (@available(macOS 13.0, *)) {
+        if (![NSUserDefaults.standardUserDefaults boolForKey:LaunchAtLoginPreferenceKey]) return;
+        SMAppService *service = SMAppService.mainAppService;
+        if (service.status == SMAppServiceStatusEnabled) {
+            self.launchAtLoginError = nil;
+            return;
+        }
+        if (service.status == SMAppServiceStatusRequiresApproval) {
+            self.launchAtLoginError = @"approval required in System Settings > General > Login Items";
+            return;
+        }
+        NSError *error = nil;
+        BOOL ok = [service registerAndReturnError:&error];
+        self.launchAtLoginError = ok ? nil : error.localizedDescription;
+    }
+}
+
+- (void)toggleLaunchAtLogin {
+    if (@available(macOS 13.0, *)) {
+        SMAppService *service = SMAppService.mainAppService;
+        BOOL wasEnabled = [self launchAtLoginEnabled];
+        NSError *error = nil;
+        BOOL ok = wasEnabled ? [service unregisterAndReturnError:&error]
+                             : [service registerAndReturnError:&error];
+        if (ok) {
+            [NSUserDefaults.standardUserDefaults setBool:!wasEnabled forKey:LaunchAtLoginPreferenceKey];
+        }
+        self.launchAtLoginError = ok ? nil : error.localizedDescription;
+    }
 }
 
 - (void)quit { [NSApp terminate:nil]; }
@@ -374,6 +443,12 @@ typedef NS_ENUM(NSInteger, ReaderState) {
 
 int main(int argc, const char *argv[]) {
     @autoreleasepool {
+        if (argc > 1 && strcmp(argv[1], "--launch-at-login-status") == 0) {
+            AppDelegate *statusDelegate = AppDelegate.new;
+            NSString *status = [statusDelegate launchAtLoginStatusText];
+            puts(status.UTF8String);
+            return [status isEqualToString:@"enabled"] ? 0 : 1;
+        }
         NSApplication *app = NSApplication.sharedApplication;
         AppDelegate *delegate = AppDelegate.new;
         app.delegate = delegate;
