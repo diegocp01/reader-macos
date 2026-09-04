@@ -15,7 +15,7 @@ Intel Macs are not currently supported because the MLX engine requires Apple Sil
 
 1. Download this repository with **Code → Download ZIP** and unzip it.
 2. Double-click `install.command`. If macOS blocks it, Control-click it and choose **Open**.
-3. On first launch, allow **Kokoro Reader** in **System Settings → Privacy & Security → Accessibility**.
+3. Select text and click the waveform. If access is needed, choose **Open Settings**, then allow **Kokoro Reader** in **System Settings → Privacy & Security → Accessibility**. On macOS 27, this pane is named **Device Control and Data Access**. Return to your text and click the waveform again.
 
 The app enables **Launch at Login** automatically so the menu-bar icon returns after a logout or restart. macOS may show a background-item notification; if approval is required, enable **Kokoro Reader** in **System Settings → General → Login Items**. Right-click the menu-bar icon to turn Launch at Login off later.
 
@@ -26,7 +26,19 @@ The installer creates:
 
 No administrator password is required.
 
-Because public builds are compiled and ad-hoc signed on each Mac, installing a rebuilt update may require toggling Kokoro Reader off and on again under Accessibility.
+Public builds are compiled and ad-hoc signed on each Mac. Updating the app can invalidate the permission saved for the previous build, even when its switch still appears enabled. The installer waits for the old app to quit before replacing it; it does not reset permissions automatically.
+
+### Permission enabled, but reading is still blocked
+
+1. Double-click `repair-permissions.command` in the downloaded repository and confirm the repair.
+2. Click the waveform and choose **Open Settings** if prompted. Enable **Kokoro Reader** again under **Privacy & Security → Accessibility**, or **Device Control and Data Access** on macOS 27.
+3. Select text and click the waveform. If access is still blocked, quit and reopen Kokoro Reader once after approving it.
+
+The repair quits the running reader, clears **only** its stale Accessibility permission, and reopens the installed app. It builds a small app helper using Apple Command Line Tools so it can also stop older versions safely; it does not reinstall the app, download models, change login preferences, or clear other apps' permissions. Any current reading stops. If quitting or resetting fails, the command stops and prints the error.
+
+Without Command Line Tools, remove Kokoro Reader from that settings pane using **−**, then use **+** to add `~/Applications/Kokoro Reader.app` again and enable it. Simply switching the old entry off and on may retain the stale signature. The app's right-click **Text Access Help…** menu also shows the installed path.
+
+This recovery does not make ad-hoc signatures stable across updates. Releases signed consistently with a Developer ID identity can preserve their designated requirement across builds; the repo currently distributes locally built apps, so reauthorization can still be necessary. See [Apple's code-signing requirements documentation](https://developer.apple.com/documentation/technotes/tn3127-inside-code-signing-requirements).
 
 ## Use
 
@@ -47,6 +59,8 @@ Model weights are intentionally excluded from GitHub. The installer downloads th
 The Kokoro weights and MLX conversion are Apache 2.0 licensed. The `kokoro-mlx` inference package is MIT licensed. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## Development
+
+Run the installer/permission workflow tests with `python3 -m unittest discover -s tests -p 'test_*.py' -v`. They use temporary app directories and stub system commands, so they do not reset real permissions or stop the installed reader. `KOKORO_READER_APPLICATIONS_DIR` overrides the app directory for isolated install/repair testing; normal users can leave it unset.
 
 ```sh
 ./scripts/install-uv.sh
