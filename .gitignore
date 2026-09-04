@@ -7,3 +7,4 @@ models/
 .uv-cache/
 .DS_Store
 *.wav
+__pycache__/

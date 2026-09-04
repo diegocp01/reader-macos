@@ -10,7 +10,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Check shell scripts
-        run: zsh -n install.command uninstall.command scripts/*.sh
+        run: |
+          for script in *.command scripts/*.sh; do
+            zsh -n "$script"
+          done
+      - name: Test installer and permission recovery
+        run: python3 -m unittest discover -s tests -p 'test_*.py' -v
       - name: Check Python
         run: python3 -m py_compile python/engine.py tests/engine_smoke.py
       - name: Build app

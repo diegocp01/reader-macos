@@ -33,10 +33,8 @@ fi
 "$ROOT/scripts/install-uv.sh"
 "$ROOT/scripts/setup-runtime.sh"
 "$ROOT/scripts/download-model.sh"
-"$ROOT/scripts/build.sh"
-pkill -TERM -x KokoroReader 2>/dev/null || true
 "$ROOT/scripts/install-app.sh"
 
 echo
 echo "Kokoro Reader is installed and running."
-echo "On first launch, allow it in System Settings → Privacy & Security → Accessibility."
+echo "Allow it in System Settings → Privacy & Security → Accessibility (Device Control and Data Access on macOS 27)."

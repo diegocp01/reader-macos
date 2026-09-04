@@ -5,6 +5,39 @@
 
 static NSString * const LaunchAtLoginPreferenceKey = @"launchAtLoginPreference";
 
+static NSString *PermissionPaneName(void) {
+    if (NSProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 27) {
+        return @"Device Control and Data Access";
+    }
+    return @"Accessibility";
+}
+
+// Exit through AppKit so the running app also shuts down its speech engine.
+static int QuitRunningReaders(void) {
+    NSArray<NSRunningApplication *> *apps = [NSRunningApplication
+        runningApplicationsWithBundleIdentifier:@"com.local.kokoro-reader"];
+    pid_t currentPID = NSProcessInfo.processInfo.processIdentifier;
+    for (NSRunningApplication *app in apps) {
+        if (app.processIdentifier != currentPID && !app.terminated && ![app terminate]) {
+            fputs("Could not quit Kokoro Reader. Quit it from its menu and try again.\n", stderr);
+            return 1;
+        }
+    }
+    NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:10];
+    while (YES) {
+        BOOL running = NO;
+        for (NSRunningApplication *app in apps) {
+            if (app.processIdentifier != currentPID && !app.terminated) running = YES;
+        }
+        if (!running) return 0;
+        if (deadline.timeIntervalSinceNow <= 0) {
+            fputs("Kokoro Reader is still running. Close its dialogs, quit it, and try again.\n", stderr);
+            return 1;
+        }
+        [NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.1]];
+    }
+}
+
 typedef NS_ENUM(NSInteger, ReaderState) {
     ReaderStateStarting,
     ReaderStateReady,
@@ -232,7 +265,6 @@ typedef NS_ENUM(NSInteger, ReaderState) {
         [self updateIcon];
         [self showAlert:@"Kokoro Reader couldn’t start" message:error.localizedDescription];
     }
-    [self.selectionReader requestAccessibilityIfNeeded];
 }
 
 - (void)applicationWillTerminate:(NSNotification *)notification {
@@ -258,8 +290,10 @@ typedef NS_ENUM(NSInteger, ReaderState) {
         return;
     }
     if (self.state != ReaderStateReady) { NSBeep(); return; }
-    if (![self.selectionReader requestAccessibilityIfNeeded]) {
-        [self showAlert:@"Allow Accessibility access" message:@"In System Settings, enable Kokoro Reader under Privacy & Security → Accessibility. Then select text and click the waveform again."];
+    if (!AXIsProcessTrusted()) {
+        // Explain the next step before requesting access: the native prompt
+        // is asynchronous and must not be covered by our own modal alert.
+        [self showPermissionHelp];
         return;
     }
     NSString *text = self.selectionReader.selectedText;
@@ -360,6 +394,9 @@ typedef NS_ENUM(NSInteger, ReaderState) {
     read.enabled = self.state == ReaderStateReady || active;
     [menu addItem:read];
     [menu addItem:NSMenuItem.separatorItem];
+    NSMenuItem *permissions = [[NSMenuItem alloc] initWithTitle:@"Text Access Help…" action:@selector(showPermissionHelp) keyEquivalent:@""];
+    permissions.target = self;
+    [menu addItem:permissions];
     NSMenuItem *launchAtLogin = [[NSMenuItem alloc] initWithTitle:@"Launch at Login" action:@selector(toggleLaunchAtLogin) keyEquivalent:@""];
     launchAtLogin.target = self;
     launchAtLogin.state = [self launchAtLoginEnabled] ? NSControlStateValueOn : NSControlStateValueOff;
@@ -430,6 +467,26 @@ typedef NS_ENUM(NSInteger, ReaderState) {
 
 - (void)quit { [NSApp terminate:nil]; }
 
+- (void)showPermissionHelp {
+    [NSApp activateIgnoringOtherApps:YES];
+    NSAlert *alert = NSAlert.new;
+    alert.messageText = @"Allow access to selected text";
+    alert.informativeText = [NSString stringWithFormat:
+        @"Enable Kokoro Reader in System Settings → Privacy & Security → %@.\n\n"
+        @"Already enabled after an update? Remove its entry with the minus button, "
+        @"then add this installed app with the plus button:\n%@\n\n"
+        @"Alternatively, run repair-permissions.command from the downloaded repository. "
+        @"Then enable access again. Quit and reopen Kokoro Reader if needed.",
+        PermissionPaneName(), NSBundle.mainBundle.bundlePath];
+    [alert addButtonWithTitle:@"Open Settings"];
+    [alert addButtonWithTitle:@"Cancel"];
+    if ([alert runModal] == NSAlertFirstButtonReturn) {
+        [self.selectionReader requestAccessibilityIfNeeded];
+        NSURL *url = [NSURL URLWithString:@"x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"];
+        [NSWorkspace.sharedWorkspace openURL:url];
+    }
+}
+
 - (void)showAlert:(NSString *)title message:(NSString *)message {
     [NSApp activateIgnoringOtherApps:YES];
     NSAlert *alert = NSAlert.new;
@@ -443,6 +500,9 @@ typedef NS_ENUM(NSInteger, ReaderState) {
 
 int main(int argc, const char *argv[]) {
     @autoreleasepool {
+        if (argc > 1 && strcmp(argv[1], "--quit-running") == 0) {
+            return QuitRunningReaders();
+        }
         if (argc > 1 && strcmp(argv[1], "--launch-at-login-status") == 0) {
             AppDelegate *statusDelegate = AppDelegate.new;
             NSString *status = [statusDelegate launchAtLoginStatusText];
