@@ -17,7 +17,6 @@ Intel Macs are not currently supported because the MLX engine requires Apple Sil
 2. Double-click `install.command`. If macOS blocks it, Control-click it and choose **Open**.
 3. Select text and click the waveform. If access is needed, choose **Open Settings**, then allow **Kokoro Reader** in **System Settings → Privacy & Security → Accessibility**. On macOS 27, this pane is named **Device Control and Data Access**. Return to your text and click the waveform again.
 
-The app enables **Launch at Login** automatically so the menu-bar icon returns after a logout or restart. macOS may show a background-item notification; if approval is required, enable **Kokoro Reader** in **System Settings → General → Login Items**. Right-click the menu-bar icon to turn Launch at Login off later.
 
 The installer creates:
 
@@ -34,7 +33,7 @@ Public builds are compiled and ad-hoc signed on each Mac. Updating the app can i
 2. Click the waveform and choose **Open Settings** if prompted. Enable **Kokoro Reader** again under **Privacy & Security → Accessibility**, or **Device Control and Data Access** on macOS 27.
 3. Select text and click the waveform. If access is still blocked, quit and reopen Kokoro Reader once after approving it.
 
-The repair quits the running reader, clears **only** its stale Accessibility permission, and reopens the installed app. It builds a small app helper using Apple Command Line Tools so it can also stop older versions safely; it does not reinstall the app, download models, change login preferences, or clear other apps' permissions. Any current reading stops. If quitting or resetting fails, the command stops and prints the error.
+The repair quits the running reader, clears **only** its stale Accessibility permission, and reopens the installed app. It builds a small app helper using Apple Command Line Tools so it can also stop older versions safely; it pauses automatic restart while repairing and does not reinstall the app, download models, change the saved startup preference, or clear other apps' permissions. Any current reading stops. If quitting or resetting fails, the command stops and prints the error.
 
 Without Command Line Tools, remove Kokoro Reader from that settings pane using **−**, then use **+** to add `~/Applications/Kokoro Reader.app` again and enable it. Simply switching the old entry off and on may retain the stale signature. The app's right-click **Text Access Help…** menu also shows the installed path.
 
@@ -77,8 +76,31 @@ KOKORO_READER_HOME="$PWD/.test-install" .test-install/.venv/bin/python3 tests/en
 
 ## Uninstall
 
-Turn off **Launch at Login** from the app's right-click menu, then double-click `uninstall.command`. It moves the app and support files to the Trash so they remain recoverable.
+Turn off **Launch at Login & Keep Running** from the app's right-click menu, then double-click `uninstall.command`. It moves the app and support files to the Trash so they remain recoverable.
 
 ## License
 
 Kokoro Reader source code is available under the [MIT License](LICENSE).
+
+## Persistent menu-bar startup
+
+On first launch, the app installs a per-user LaunchAgent that starts it after login
+(including after a restart) and reopens it if it exits. It uses `open -g -W` so
+macOS launches the normal app bundle without creating duplicate instances, with
+a 30-second throttle to avoid a tight restart loop. No administrator access is needed.
+An existing saved opt-out is preserved. Older native login registrations are removed
+when migrating to this single startup mechanism.
+
+**Quit will reopen the app while this option is enabled.** Turn off
+**Launch at Login & Keep Running** in the app menu before quitting to keep it closed.
+Registration failures are shown in the menu. If macOS blocks a background item,
+allow the app in **System Settings → General → Login Items**, then toggle the option
+off and on. macOS approval and a logged-in graphical session are required; startup
+cannot put an icon on the login screen. Install the app in its final location before
+opening it, and open it again after moving it to update the saved path.
+
+Install/update scripts pause the restart job before replacing the app. The next normal
+launch resumes it if enabled. To remove the app, disable the menu option first.
+
+Run `./scripts/test-startup.sh` for isolated startup lifecycle tests. These use a
+fake launchctl runner and temporary paths; they never alter your login items.

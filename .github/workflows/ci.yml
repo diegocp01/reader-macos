@@ -18,6 +18,8 @@ jobs:
         run: python3 -m unittest discover -s tests -p 'test_*.py' -v
       - name: Check Python
         run: python3 -m py_compile python/engine.py tests/engine_smoke.py
+      - name: Test persistent startup
+        run: ./scripts/test-startup.sh
       - name: Build app
         run: ./scripts/build.sh
       - name: Verify signature and metadata

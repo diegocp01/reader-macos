@@ -13,6 +13,11 @@ if [[ "$answer" != [yY] ]]; then
   exit 0
 fi
 
+LABEL="com.local.autostart.kokoro-reader"
+if launchctl print "gui/$(id -u)/$LABEL" >/dev/null 2>&1; then
+  launchctl bootout "gui/$(id -u)/$LABEL"
+fi
+rm -f "$HOME/Library/LaunchAgents/$LABEL.plist"
 pkill -TERM -x KokoroReader 2>/dev/null || true
 mkdir -p "$TRASH"
 [[ ! -e "$APP" ]] || mv "$APP" "$TRASH/"
