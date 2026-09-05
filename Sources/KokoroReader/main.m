@@ -1,3 +1,4 @@
+#import "PersistentStartup.h"
 #import <Cocoa/Cocoa.h>
 #import <ApplicationServices/ApplicationServices.h>
 #import <AVFoundation/AVFoundation.h>
@@ -397,7 +398,7 @@ typedef NS_ENUM(NSInteger, ReaderState) {
     NSMenuItem *permissions = [[NSMenuItem alloc] initWithTitle:@"Text Access Help…" action:@selector(showPermissionHelp) keyEquivalent:@""];
     permissions.target = self;
     [menu addItem:permissions];
-    NSMenuItem *launchAtLogin = [[NSMenuItem alloc] initWithTitle:@"Launch at Login" action:@selector(toggleLaunchAtLogin) keyEquivalent:@""];
+    NSMenuItem *launchAtLogin = [[NSMenuItem alloc] initWithTitle:@"Launch at Login & Keep Running" action:@selector(toggleLaunchAtLogin) keyEquivalent:@""];
     launchAtLogin.target = self;
     launchAtLogin.state = [self launchAtLoginEnabled] ? NSControlStateValueOn : NSControlStateValueOff;
     [menu addItem:launchAtLogin];
@@ -413,56 +414,33 @@ typedef NS_ENUM(NSInteger, ReaderState) {
     [self.statusItem popUpStatusItemMenu:menu];
 }
 
+- (PersistentStartup *)startup {
+    return StartupController(@"com.local.autostart.kokoro-reader");
+}
+
 - (BOOL)launchAtLoginEnabled {
-    if (@available(macOS 13.0, *)) {
-        return SMAppService.mainAppService.status == SMAppServiceStatusEnabled;
-    }
-    return NO;
+    return [NSFileManager.defaultManager fileExistsAtPath:self.startup.path] && self.startup.loaded;
 }
 
 - (NSString *)launchAtLoginStatusText {
-    if (@available(macOS 13.0, *)) {
-        switch (SMAppService.mainAppService.status) {
-            case SMAppServiceStatusEnabled: return @"enabled";
-            case SMAppServiceStatusRequiresApproval: return @"requires_approval";
-            case SMAppServiceStatusNotFound: return @"not_found";
-            case SMAppServiceStatusNotRegistered:
-            default: return @"not_registered";
-        }
-    }
-    return @"unsupported";
+    if ([self launchAtLoginEnabled]) return @"enabled";
+    return [NSFileManager.defaultManager fileExistsAtPath:self.startup.path] ? @"inactive" : @"not_registered";
 }
 
 - (void)ensureLaunchAtLoginIfPreferred {
-    if (@available(macOS 13.0, *)) {
-        if (![NSUserDefaults.standardUserDefaults boolForKey:LaunchAtLoginPreferenceKey]) return;
-        SMAppService *service = SMAppService.mainAppService;
-        if (service.status == SMAppServiceStatusEnabled) {
-            self.launchAtLoginError = nil;
-            return;
-        }
-        if (service.status == SMAppServiceStatusRequiresApproval) {
-            self.launchAtLoginError = @"approval required in System Settings > General > Login Items";
-            return;
-        }
-        NSError *error = nil;
-        BOOL ok = [service registerAndReturnError:&error];
-        self.launchAtLoginError = ok ? nil : error.localizedDescription;
-    }
+    NSError *error = nil;
+    BOOL preferred = [NSUserDefaults.standardUserDefaults boolForKey:LaunchAtLoginPreferenceKey];
+    BOOL ok = RemoveNativeLoginItem(&error) && [self.startup setEnabled:preferred error:&error];
+    self.launchAtLoginError = ok ? nil : error.localizedDescription;
 }
 
 - (void)toggleLaunchAtLogin {
-    if (@available(macOS 13.0, *)) {
-        SMAppService *service = SMAppService.mainAppService;
-        BOOL wasEnabled = [self launchAtLoginEnabled];
-        NSError *error = nil;
-        BOOL ok = wasEnabled ? [service unregisterAndReturnError:&error]
-                             : [service registerAndReturnError:&error];
-        if (ok) {
-            [NSUserDefaults.standardUserDefaults setBool:!wasEnabled forKey:LaunchAtLoginPreferenceKey];
-        }
-        self.launchAtLoginError = ok ? nil : error.localizedDescription;
-    }
+    NSError *error = nil;
+    // A pending/blocked registration can also be turned off.
+    BOOL wasPreferred = [NSUserDefaults.standardUserDefaults boolForKey:LaunchAtLoginPreferenceKey];
+    BOOL ok = RemoveNativeLoginItem(&error) && [self.startup setEnabled:!wasPreferred error:&error];
+    if (ok) [NSUserDefaults.standardUserDefaults setBool:!wasPreferred forKey:LaunchAtLoginPreferenceKey];
+    self.launchAtLoginError = ok ? nil : error.localizedDescription;
 }
 
 - (void)quit { [NSApp terminate:nil]; }
@@ -500,7 +478,18 @@ typedef NS_ENUM(NSInteger, ReaderState) {
 
 int main(int argc, const char *argv[]) {
     @autoreleasepool {
+        if (argc > 1 && strcmp(argv[1], "--pause-startup") == 0) {
+            NSError *error = nil;
+            BOOL ok = [StartupController(@"com.local.autostart.kokoro-reader") pause:&error];
+            if (!ok) fprintf(stderr, "%s\n", error.localizedDescription.UTF8String);
+            return ok ? 0 : 1;
+        }
         if (argc > 1 && strcmp(argv[1], "--quit-running") == 0) {
+            NSError *pauseError = nil;
+            if (![StartupController(@"com.local.autostart.kokoro-reader") pause:&pauseError]) {
+                fprintf(stderr, "%s\n", pauseError.localizedDescription.UTF8String);
+                return 1;
+            }
             return QuitRunningReaders();
         }
         if (argc > 1 && strcmp(argv[1], "--launch-at-login-status") == 0) {
