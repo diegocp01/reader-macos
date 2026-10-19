@@ -47,6 +47,20 @@ This recovery does not make ad-hoc signatures stable across updates. Releases si
 
 The app pre-warms Kokoro at launch and streams small sentence batches for low time-to-first-audio.
 
+## Memory use
+
+Kokoro Reader uses a lot of RAM while it is running. Expect its background `python3.12` process to hold about 1.5 GB, with peaks near 1.8 GB, even when idle at 0% CPU. Most of this is GPU/graphics buffers used by the MLX speech engine.
+
+This is by design: the app loads the voice model and generates a short "Ready" sample at launch, then keeps the engine loaded so reading starts quickly. Stopping speech does not unload the model.
+
+To check it, open **Activity Monitor**, find the `python3.12` process, and confirm Kokoro Reader launched it:
+
+```sh
+ps aux | grep '[p]ython3.12'
+```
+
+To reclaim the memory, quit Kokoro Reader completely. If **Launch at Login & Keep Running** is enabled, turn it off first, or the app reopens after quitting (see [Persistent menu-bar startup](#persistent-menu-bar-startup)). On Macs with 8 GB of RAM, watch **Memory Pressure** in Activity Monitor and quit the reader when you are not using it.
+
 ## Offline and privacy
 
 After installation, selected text never leaves the Mac. Kokoro runs locally through Apple MLX/Metal, and generated audio is written only to the user's temporary folder for playback.
